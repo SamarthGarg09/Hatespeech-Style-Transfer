@@ -1,7 +1,7 @@
 import torch
 from torch import nn
 import torch.nn.functional as F
-from attention import MultiHeadAttention
+from style_transformer_repl._transformers.notebooks.attention import MultiHeadAttention
 from encoder import FeedForwardLayer, Encoder
 from utils import embedding, layer_norm, NormAttnBlock, FeedForwardLayer
 

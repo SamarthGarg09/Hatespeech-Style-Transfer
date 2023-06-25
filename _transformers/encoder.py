@@ -1,6 +1,6 @@
 import torch
 from torch import nn
-from attention import MultiHeadAttention
+from style_transformer_repl._transformers.notebooks.attention import MultiHeadAttention
 import torch.nn.functional as F
 from utils import NormAttnBlock, layer_norm, FeedForwardLayer
     
