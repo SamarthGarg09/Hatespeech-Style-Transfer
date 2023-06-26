@@ -1,7 +1,8 @@
 import torch
 from torch import nn
+import torch.nn.functional as F
 from utils import embedding, EmbeddingLayer
-from decoder import Decoder
+# from decoder import Decoder
 from encoder import Encoder
 
 class StyleTransformer(nn.Module):
@@ -27,14 +28,14 @@ class StyleTransformer(nn.Module):
         self.sos_token = torch.nn.Parameter(torch.randn(model_dim))
         self.temperature = temperature
 
-    def forward(self, src, tgt, src_mask, style, generate=False):
-        batch_size = src_mask.shape[0]
-        max_seq_len = src_mask.shape[1]
+    def forward(self, src, tgt, inp_lengths, style, generate=False):
+        batch_size = src.shape[0]
+        max_seq_len = src.shape[1]
         
         pos_idx = torch.arange(self.allowed_seq_len).unsqueeze(0).expand((batch_size, -1))
         pos_idx = pos_idx.to(src.device)
 
-        src_mask = (src_mask == 0).short()
+        src_mask = pos_idx[:, :max_seq_len] >= inp_lengths.unsqueeze(-1)
         src_mask = torch.cat((torch.zeros_like(src_mask[:, :1]), src_mask), dim=-1).view(batch_size, 1, 1, max_seq_len+1)
 
 
@@ -76,20 +77,72 @@ class StyleTransformer(nn.Module):
             logits = torch.cat(logits, 1)
         return logits
 
+class Discriminator(nn.Module):
+    def __init__(
+            self, 
+        vocab_size, num_style_embeds, num_enc_layers, 
+        model_dim, num_heads, dropout, max_allowed_length, num_classes, 
+        padding_idx=99
+    ):
+        super().__init__()
+        self.allowed_seq_len = max_allowed_length
+        self.style_embeds = embedding(num_style_embeds, model_dim)
+        self.embed = EmbeddingLayer(vocab_size, model_dim, max_allowed_length, padding_idx=padding_idx)
+        self.encoder = Encoder(
+            num_enc_layers=num_enc_layers,
+            hidden_dim=model_dim,
+            num_heads=num_heads,
+            dropout_ratio=dropout
+        )  
+        self.cls_token = nn.Parameter(torch.rand(model_dim))
+        self.cls_head = nn.Linear(model_dim, num_classes)
 
-if __name__ == "__main__":
-    # dummy data
-    model = StyleTransformer(400, 300, 2, 4, 4, 128, 4, 0.1, 10, 1.0, 0)
-    # dec2 = Decoder2(4, 128, 100, 4, 0.1)
-    src = torch.randint(0, 100, (2, 10))
-    tgt = torch.randint(0, 100, (2, 10))
-    src_mask = torch.randint(0, 2, (2, 10)).float()
-    tgt_mask = torch.randint(0, 2, (2, 1)).float()
-    gen_text = model(
-        src, 
-        tgt, 
-        src_mask, 
-        torch.tensor([0, 1]), 
-        generate=True
-    )
-    print(gen_text)
+    def forward(self, src, input_lengths, style_ids=None):
+        batch_size = src.shape[0]
+        max_seq_len = src.shape[1]
+        num_extra_tokens = 1 if style_ids is None else 2
+        pos_ids = torch.arange(max_seq_len).unsqueeze(0).expand((batch_size, -1)).to(src.device)
+
+        src_mask = pos_ids>=input_lengths.unsqueeze(1)
+
+        for _ in range(num_extra_tokens):
+            src_mask = torch.cat((torch.zeros_like(src_mask[:, :1]), src_mask), dim=1)
+        src_mask = src_mask.view(batch_size, 1, 1, max_seq_len+num_extra_tokens)
+
+        cls_token = self.cls_token.unsqueeze(0).expand((batch_size, 1, -1))
+
+        if style_ids is not None:
+            style_emb = self.style_embeds(style_ids).unsqueeze(1)
+            enc = torch.cat((cls_token, style_emb), dim=1)
+        enc = torch.cat((enc, self.embed(src, pos_ids[:, :max_seq_len])), dim=1)
+        enc = self.encoder(enc, src_mask)
+        logits = self.cls_head(enc[:, 0])
+
+        return F.log_softmax(logits, -1)
+
+
+# if __name__ == '__main__':
+#     disc = Discriminator(100, 2, 4, 128, 4, 0.1, 300, 2)
+#     src = torch.randint(0, 100, (2, 10))
+#     inp_tokens = torch.randint(0, 200, size=(2, ))
+#     style_ids = torch.tensor([0, 1])
+#     a = disc(
+#         src, inp_tokens, style_ids
+#     )
+#     print(a.shape)
+# if __name__ == "__main__":
+#     # dummy data
+#     model = StyleTransformer(400, 300, 2, 4, 4, 128, 4, 0.1, 10, 1.0, 0)
+#     # dec2 = Decoder2(4, 128, 100, 4, 0.1)
+#     src = torch.randint(0, 100, (2, 10))
+#     tgt = torch.randint(0, 100, (2, 10))
+#     src_mask = torch.randint(0, 2, (2, 10)).float()
+#     tgt_mask = torch.randint(0, 2, (2, 1)).float()
+#     gen_text = model(
+#         src, 
+#         tgt, 
+#         src_mask, 
+#         torch.tensor([0, 1]), 
+#         generate=True
+#     )
+#     print(gen_text)
