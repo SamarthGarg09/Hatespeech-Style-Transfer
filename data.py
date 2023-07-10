@@ -7,7 +7,7 @@ from sklearn.model_selection import train_test_split
 def create_tokenizer():
     tokenizer = Tokenizer.from_file('/Data/deeksha/disha/code_p/style_transformer_repl/_transformers/tokenizer.json')
     tokenizer = PreTrainedTokenizerFast(tokenizer_object=tokenizer, model_max_length=512)
-    tokenizer.add_special_tokens({'pad_token': '[PAD]'})
+    tokenizer.add_special_tokens({'pad_token': '[PAD]', 'eos_token': '[SEP]', 'bos_token': '[CLS]', 'unk_token': '[UNK]'})
     
     return tokenizer
 
@@ -41,8 +41,8 @@ class HSDataset(torch.utils.data.Dataset):
         return {
             'pos_input_ids': pos_tok_text['input_ids'],
             'neg_input_ids': neg_tok_text['input_ids'],
-            'pos_attention_mask': pos_tok_text['attention_mask'],
-            'neg_attention_mask': neg_tok_text['attention_mask'],
+            # 'pos_attention_mask': pos_tok_text['attention_mask'],
+            # 'neg_attention_mask': neg_tok_text['attention_mask'],
         }
     
     def __getitem__(self, idx):
@@ -67,31 +67,38 @@ def collate_fn(batch):
         positive_data.append(item['pos_data'])
         negative_data.append(item['neg_data'])
     positive_data = tokenizer(positive_data, padding=True, truncation=True, return_tensors='pt')
-    positive_mask = positive_data['attention_mask']
+    # positive_mask = positive_data['attention_mask']
     positive_ids = positive_data['input_ids']
     negative_data = tokenizer(negative_data, padding=True, truncation=True, return_tensors='pt')
-    negative_mask = negative_data['attention_mask']
+    # negative_mask = negative_data['attention_mask']
     negative_ids = negative_data['input_ids']
 
     pos_input_ids = pad_sequence(positive_ids, batch_first=True, padding_value=1.0)
-    pos_attention_mask = pad_sequence(positive_mask, batch_first=True, padding_value=0.0)
+    # pos_attention_mask = pad_sequence(positive_mask, batch_first=True, padding_value=0.0)
     neg_input_ids = pad_sequence(negative_ids, batch_first=True, padding_value=1.0)
-    neg_attention_mask = pad_sequence(negative_mask, batch_first=True, padding_value=0.0)
+    # neg_attention_mask = pad_sequence(negative_mask, batch_first=True, padding_value=0.0)
     return {
         'pos_input_ids': pos_input_ids,
-        'pos_attention_mask': pos_attention_mask,
+        # 'pos_attention_mask': pos_attention_mask,
         'neg_input_ids': neg_input_ids,
-        'neg_attention_mask': neg_attention_mask
+        # 'neg_attention_mask': neg_attention_mask
     }
 
-train_dataset, dev_dataset, test_dataset = split_data("/Data/deeksha/disha/code_p/style-transformer/data/yelp", tokenizer)
+train_dataset, dev_dataset, test_dataset = split_data("./data/yelp", tokenizer)
 print("Data split into train, dev and test sets")
 from torch.utils.data import DataLoader
 
-train_dataloader = DataLoader(train_dataset, batch_size=16, shuffle=True, collate_fn=collate_fn)
-dev_dataloader = DataLoader(dev_dataset, batch_size=16, shuffle=True, collate_fn=collate_fn)
-test_dataloader = DataLoader(test_dataset, batch_size=16, shuffle=True, collate_fn=collate_fn)
 
-for batch in train_dataloader:
-    break
-print(batch['pos_input_ids'].shape)
+def load_data(config):
+
+    train_dataloader = DataLoader(train_dataset, batch_size=config['batch_size'], shuffle=True, collate_fn=collate_fn)
+    dev_dataloader = DataLoader(dev_dataset, batch_size=config['batch_size'], shuffle=True, collate_fn=collate_fn)
+    test_dataloader = DataLoader(test_dataset, batch_size=config['batch_size'], shuffle=True, collate_fn=collate_fn)
+
+    return train_dataloader, dev_dataloader, test_dataloader
+
+def get_tokenizer():
+    return tokenizer
+# for batch in train_dataloader:
+#     break
+# print(batch['pos_input_ids'].shape)

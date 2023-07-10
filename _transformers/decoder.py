@@ -1,14 +1,14 @@
 import torch
 from torch import nn
 import torch.nn.functional as F
-from attention import MultiHeadAttention
-from encoder import FeedForwardLayer, Encoder
-from utils import embedding, layer_norm, NormAttnBlock, FeedForwardLayer
+from _transformers.attention import MultiHeadAttention
+from _transformers.encoder import FeedForwardLayer, Encoder
+from _transformers.utils import layer_norm, NormAttnBlock, FeedForwardLayer, Linear
 
 class Generator(nn.Module):
     def __init__(self, d_model, vocab_size):
         super(Generator, self).__init__()
-        self.proj = nn.Linear(d_model, vocab_size)
+        self.proj = Linear(d_model, vocab_size)
 
     def forward(self, x, temperature):
         return F.log_softmax(self.proj(x) / temperature, dim=-1)
@@ -54,15 +54,14 @@ class Decoder(nn.Module):
             DecoderLayer(hidden_dim, num_heads, dropout_ratio)
             for _ in range(num_layers)
         ])
-        self.temperature = temperature
         self.norm = layer_norm(hidden_dim)
         self.generator = Generator(hidden_dim, vocab_size)
 
-    def forward(self, x, conditional_encoding, tgt_mask, src_mask):
+    def forward(self, x, conditional_encoding, tgt_mask, src_mask, temperature):
         for layer in self.layers:
             x = layer(x, conditional_encoding, tgt_mask, src_mask)
         x = self.norm(x)
-        x = self.generator(x, self.temperature)
+        x = self.generator(x, temperature)
         return x
     
     def regressive_generate(self, x, memory, src_mask, tgt_mask, temperature, prev_states=None):

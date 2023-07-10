@@ -1,1 +1,9 @@
 style_transformer_repl/_transformers/__pycache__
+_transformers/__pycache__
+save
+evaluator/acc_yelp.bin
+evaluator/ppl_yelp.binary
+evaluator/yelp.refs.0
+evaluator/yelp.refs.1
+data
+__pycache__

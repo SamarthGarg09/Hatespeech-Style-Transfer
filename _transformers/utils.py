@@ -21,7 +21,7 @@ class NormAttnBlock(nn.Module):
     
 def embedding(num_embeds, embed_dim, pad_idx=0):
     embedding = nn.Embedding(num_embeds, embed_dim, padding_idx=pad_idx)
-    nn.init.kaiming_normal_(embedding.weight)
+    nn.init.xavier_uniform_(embedding.weight)
     nn.init.constant_(embedding.weight[pad_idx], 0)
     return embedding
 
@@ -37,16 +37,26 @@ class EmbeddingLayer(nn.Module):
             return self.token_embedding(x)+self.position_embedding(pos)
         else:
             # x->(B, T, E)  E.wei->(E, emb_dim) pos_emb->(B, T, emb_dim)
-            return x@self.token_embedding(x).weight+self.position_embedding(pos)
+            return x@self.token_embedding.weight+self.position_embedding(pos)
 
 class FeedForwardLayer(nn.Module):
     def __init__(self, hidden_dim, dropout_ratio) -> None:
         super().__init__()
-        self.fc1 = nn.Linear(hidden_dim, 4*hidden_dim)
-        self.fc2 = nn.Linear(4*hidden_dim, hidden_dim)
+        self.fc1 = Linear(hidden_dim, 4*hidden_dim)
+        self.fc2 = Linear(4*hidden_dim, hidden_dim)
         self.drop = dropout_ratio
 
     def forward(self, x):
         x = F.dropout(F.gelu(self.fc1(x)), p=self.drop)
         x = self.fc2(x)
         return x
+    
+def Linear(in_features, out_features, bias=True, uniform=True):
+    m = nn.Linear(in_features, out_features, bias)
+    if uniform:
+        nn.init.xavier_uniform_(m.weight)
+    else:
+        nn.init.xavier_normal_(m.weight)
+    if bias:
+        nn.init.constant_(m.bias, 0.)
+    return m

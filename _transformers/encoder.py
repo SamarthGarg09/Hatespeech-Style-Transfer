@@ -1,8 +1,8 @@
 import torch
 from torch import nn
-from attention import MultiHeadAttention
+from .attention import MultiHeadAttention
 import torch.nn.functional as F
-from utils import NormAttnBlock, layer_norm, FeedForwardLayer
+from .utils import NormAttnBlock, layer_norm, FeedForwardLayer
     
 class EncoderLayer(nn.Module):
     def __init__(self, hidden_dim, num_heads, dropout_ratio) -> None:

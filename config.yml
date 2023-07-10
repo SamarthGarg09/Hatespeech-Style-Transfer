@@ -1,0 +1,47 @@
+# config file for the application
+
+Config:
+    data_path : './data/yelp/'
+    log_dir : 'runs/exp'
+    save_path : './save'
+    pretrained_embed_path : './embedding/'
+    device : "'cuda' if torch.cuda.is_available() else 'cpu'"
+    discriminator_method : 'conditional' # 'Multi' or 'Cond'
+    load_pretrained_embed : False
+    min_freq : 3
+    max_length : 100
+    embed_size : 256
+    d_model : 256
+    num_heads : 4
+    num_styles : 2
+    
+    num_classes : "num_styles + 1 if config['discriminator_method'] == 'Multi' else 2"
+    num_layers : 4
+    batch_size : 16
+    lr_style_model : 0.0001
+    lr_disc_model : 0.0001
+    L2 : 0
+    iter_D : 10
+    iter_F : 5
+    F_pretrain_iter : 1000
+    log_steps : 5
+    eval_steps : 20
+    learned_pos_embed : True
+    dropout : 0
+    drop_rate_config : '[(1, 0)]'
+    temperature_config : '[(1, 0)]'
+
+    self_reconstruction_loss_weight : 0.25
+    cyclic_rec_loss_weight : 0.5
+    adv_factor : 1
+
+    inp_shuffle_len : 0
+    inp_unk_drop_fac : 0
+    inp_rand_drop_fac : 0
+    inp_drop_prob : 0
+
+    num_style_embeds : 2
+    num_enc_layers : 4
+    num_dec_layers : 4
+    padding_idx : 0
+    weight_decay : 0

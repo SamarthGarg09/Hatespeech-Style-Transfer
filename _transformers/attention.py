@@ -1,5 +1,6 @@
 import torch
 from torch import nn
+from _transformers.utils import Linear
 
 class SelfAttention(nn.Module):
     def __init__(self, head_dim) -> None:
@@ -13,7 +14,6 @@ class SelfAttention(nn.Module):
             wei = wei.masked_fill(mask, float('-inf'))
         # wei -> (B, NH, T, T)
         attention_scores = torch.nn.functional.softmax(wei, dim=-1)
-        print(attention_scores)
         attention_feats = attention_scores @ v
         # attetnion_feats -> (B, NH, T, HD)
         return attention_scores, attention_feats
@@ -25,11 +25,11 @@ class MultiHeadAttention(nn.Module):
         self.head_dim = hidden_dim // num_heads
         self.h = self.num_heads
         self.layers = nn.ModuleList([
-            nn.Linear(hidden_dim, hidden_dim)
+            Linear(hidden_dim, hidden_dim)
             for _ in range(num_heads)
         ])
         self.scaled_attention = SelfAttention(self.head_dim)
-        self.fc = nn.Linear(hidden_dim, hidden_dim)
+        self.fc = Linear(hidden_dim, hidden_dim)
 
     def forward(self, q, k, v, mask=None):
         
