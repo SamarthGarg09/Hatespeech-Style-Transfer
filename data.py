@@ -8,6 +8,7 @@ def create_tokenizer():
     tokenizer = Tokenizer.from_file('/Data/deeksha/disha/code_p/style_transformer_repl/_transformers/tokenizer.json')
     tokenizer = PreTrainedTokenizerFast(tokenizer_object=tokenizer, model_max_length=512)
     tokenizer.add_special_tokens({'pad_token': '[PAD]', 'eos_token': '[SEP]', 'bos_token': '[CLS]', 'unk_token': '[UNK]'})
+    # tokenizer.add_special_tokens({'pad_token': '[PAD]', 'eos_token': '[SEP]', 'unk_token': '[UNK]'})
     
     return tokenizer
 
@@ -84,13 +85,13 @@ def collate_fn(batch):
         # 'neg_attention_mask': neg_attention_mask
     }
 
-train_dataset, dev_dataset, test_dataset = split_data("./data/yelp", tokenizer)
-print("Data split into train, dev and test sets")
 from torch.utils.data import DataLoader
 
 
 def load_data(config):
 
+    train_dataset, dev_dataset, test_dataset = split_data(config['data_path'], tokenizer)
+    print("Data split into train, dev and test sets")
     train_dataloader = DataLoader(train_dataset, batch_size=config['batch_size'], shuffle=True, collate_fn=collate_fn)
     dev_dataloader = DataLoader(dev_dataset, batch_size=config['batch_size'], shuffle=True, collate_fn=collate_fn)
     test_dataloader = DataLoader(test_dataset, batch_size=config['batch_size'], shuffle=True, collate_fn=collate_fn)

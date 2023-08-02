@@ -19,7 +19,7 @@ class NormAttnBlock(nn.Module):
         y = sublayer_fn(self.layer_norm(x))
         return x[:, -1:] + self.dropout(y)
     
-def embedding(num_embeds, embed_dim, pad_idx=0):
+def embedding(num_embeds, embed_dim, pad_idx=None):
     embedding = nn.Embedding(num_embeds, embed_dim, padding_idx=pad_idx)
     nn.init.xavier_uniform_(embedding.weight)
     nn.init.constant_(embedding.weight[pad_idx], 0)

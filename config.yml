@@ -1,7 +1,7 @@
 # config file for the application
 
 Config:
-    data_path : './data/yelp/'
+    data_path : '/Data/deeksha/disha/code_p/style_transformer_repl/data/yelp'
     log_dir : 'runs/exp'
     save_path : './save'
     pretrained_embed_path : './embedding/'
@@ -18,8 +18,8 @@ Config:
     num_classes : "num_styles + 1 if config['discriminator_method'] == 'Multi' else 2"
     num_layers : 4
     batch_size : 16
-    lr_style_model : 0.0001
-    lr_disc_model : 0.0001
+    lr_style_model : 0.001
+    lr_disc_model : 0.001d
     L2 : 0
     iter_D : 10
     iter_F : 5
@@ -30,7 +30,6 @@ Config:
     dropout : 0
     drop_rate_config : '[(1, 0)]'
     temperature_config : '[(1, 0)]'
-
     self_reconstruction_loss_weight : 0.25
     cyclic_rec_loss_weight : 0.5
     adv_factor : 1
@@ -45,3 +44,7 @@ Config:
     num_dec_layers : 4
     padding_idx : 0
     weight_decay : 0
+
+    load_from : 'None'
+    style_model_ckpt : 'save/Jul11003557/ckpts/540_style_model.pth'
+    disc_model_ckpt : 'save/Jul11003557/ckpts/540_disc_model.pth'

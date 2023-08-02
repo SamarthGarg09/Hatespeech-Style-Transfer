@@ -26,7 +26,7 @@ class StyleTransformer(nn.Module):
         )
         self.sos_token = torch.nn.Parameter(torch.randn(model_dim))
 
-    def forward(self, src, tgt, inp_lengths, style, temperature, generate=False):
+    def forward(self, src, tgt, inp_lengths, style, temperature, generate=False, differentiable_decode=False):
         batch_size = src.shape[0]
         max_seq_len = src.shape[1]
         
@@ -37,7 +37,6 @@ class StyleTransformer(nn.Module):
 
         src_mask = pos_idx[:, :max_seq_len] >= inp_lengths.unsqueeze(-1)
         src_mask = torch.cat((torch.zeros_like(src_mask[:, :1]), src_mask), dim=1).view(batch_size, 1, 1, max_seq_len+1)
-
 
         style_embedding = self.style_embeds(style).view(batch_size, 1, -1)
         enc = torch.cat((style_embedding, self.embed(src, pos_idx[:, :max_seq_len])), dim=1)
@@ -74,7 +73,10 @@ class StyleTransformer(nn.Module):
                     prev_states
                 )
                 logits.append(logit)
-                next_token = self.embed(logit.argmax(-1), pos_idx[:, i:i+1])
+                if differentiable_decode:
+                    next_token = self.embed(logit.exp(), pos_idx[:, i:i+1])
+                else:
+                    next_token = self.embed(logit.argmax(-1), pos_idx[:, i:i+1])
                 # next_token = torch.cat((next_token, self.embed(logit.argmax(-1), pos_idx[:, i:i+1])), dim=1)
             logits = torch.cat(logits, 1)
         return logits
@@ -105,18 +107,18 @@ class Discriminator(nn.Module):
         num_extra_tokens = 1 if style_ids is None else 2
         pos_ids = torch.arange(max_seq_len).unsqueeze(0).expand((batch_size, -1)).to(src.device)
 
-        src_mask = pos_ids>=input_lengths.unsqueeze(1)
+        src_mask = pos_ids>=input_lengths.unsqueeze(-1)
 
         for _ in range(num_extra_tokens):
             src_mask = torch.cat((torch.zeros_like(src_mask[:, :1]), src_mask), dim=1)
         src_mask = src_mask.view(batch_size, 1, 1, max_seq_len+num_extra_tokens)
 
-        cls_token = self.cls_token.unsqueeze(0).expand((batch_size, 1, -1))
+        cls_token = self.cls_token.view(1, 1, -1).expand((batch_size, -1, -1))
 
         if style_ids is not None:
             style_emb = self.style_embeds(style_ids).unsqueeze(1)
             enc = torch.cat((cls_token, style_emb), dim=1)
-        enc = torch.cat((enc, self.embed(src, pos_ids[:, :max_seq_len])), dim=1)
+        enc = torch.cat((enc, self.embed(src, pos_ids)), dim=1)
         enc = self.encoder(enc, src_mask)
         logits = self.cls_head(enc[:, 0])
 

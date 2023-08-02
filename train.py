@@ -68,10 +68,12 @@ def f_step(
     disc_model.eval()
     pad_idx, eos_idx = tokenizer.pad_token_id, tokenizer.eos_token_id
     batch_size = batch['pos_input_ids'].size(0)
-    loss_fn = nn.NLLLoss(ignore_index=pad_idx, reduction='none')
+    loss_fn = nn.NLLLoss(reduction='none')
     input_ids, style_ids, input_length = concat_neg_and_pos_ids(batch, eos_idx, pad_idx, reverse=False)
     reverse_style_ids = 1 - style_ids
     token_mask = (input_ids != pad_idx).float()
+    style_optim.zero_grad()
+    
     noise_inp_ids = word_drop(
         input_ids, input_length, config['inp_drop_prob']*word_drop_ratio, pad_idx
     )
@@ -81,8 +83,8 @@ def f_step(
 
 
     self_log_probs = style_model(
-        noise_inp_ids, input_ids, noise_inp_length, style_ids, 
-        generate=False, temperature=temperature
+        input_ids, input_ids, noise_inp_length, style_ids, 
+        generate=False, temperature=temperature, differentiable_decode=False
     )
     # self reconstruction loss
     self_reconstruction_loss = loss_fn(self_log_probs.transpose(1, 2), input_ids) * token_mask
@@ -94,7 +96,7 @@ def f_step(
     if not enable_cycle_reconstruction:
         style_optim.step()
         disc_model.train()
-        style_optim.zero_grad()
+        # style_optim.zero_grad()
         return self_reconstruction_loss.item(), 0, 0
     
     gen_log_probs = style_model(
@@ -103,7 +105,8 @@ def f_step(
         input_length,
         reverse_style_ids,
         temperature,
-        generate=True
+        generate=True,
+        differentiable_decode=True
     ) #pos_sent + neg_style -> neg_sent; 0-pos_style, 1->neg_style
 
     gen_soft_tokens = gen_log_probs.exp()
@@ -115,7 +118,8 @@ def f_step(
         gen_soft_token_len,
         style_ids,
         generate=False,
-        temperature = temperature
+        temperature = temperature,
+        differentiable_decode=False
     )
 
     cyclic_rec_loss = loss_fn(cyclic_rec_log_probs.transpose(1, 2), input_ids) * token_mask
@@ -123,7 +127,7 @@ def f_step(
     cyclic_rec_loss *= config['cyclic_rec_loss_weight']
     
     # adversarial loss
-    adv_log_probs = disc_model(gen_soft_tokens, gen_soft_token_len, style_ids)
+    adv_log_probs = disc_model(gen_soft_tokens, gen_soft_token_len, reverse_style_ids)
     if config['discriminator_method'] == 'Multi':
         adv_labels = reverse_style_ids + 1
     else:
@@ -143,7 +147,7 @@ def disc_step(config, vocab, tokenizer, style_model, disc_model, batch, disc_opt
     pad_idx = tokenizer.pad_token_id
     eos_idx = tokenizer.eos_token_id
     style_model.eval()
-    loss_fn = nn.NLLLoss(reduction='none', ignore_index=pad_idx)
+    loss_fn = nn.NLLLoss(reduction='none')
 
     input_ids, style_ids, input_length = concat_neg_and_pos_ids(batch, eos_idx, pad_idx)
     rev_style_ids = 1 - style_ids
@@ -156,7 +160,8 @@ def disc_step(config, vocab, tokenizer, style_model, disc_model, batch, disc_opt
             input_length,
             style_ids, 
             generate=True,
-            temperature=temperature
+            temperature=temperature,
+            differentiable_decode=True
         )
         rev_style_gen_log_probs = style_model(
             input_ids, 
@@ -164,52 +169,53 @@ def disc_step(config, vocab, tokenizer, style_model, disc_model, batch, disc_opt
             input_length, 
             rev_style_ids,
             generate=True,
-            temperature=temperature
+            temperature=temperature,
+            differentiable_decode=True
         )
-        gen_soft_probs = raw_style_gen_log_probs.exp()
-        raw_gen_length = get_length(gen_soft_probs.argmax(-1), eos_idx)
+    gen_soft_probs = raw_style_gen_log_probs.exp()
+    raw_gen_length = get_length(gen_soft_probs.argmax(-1), eos_idx)
 
-        rev_gen_soft_tokens = rev_style_gen_log_probs.exp()
-        rev_style_length = get_length(rev_gen_soft_tokens.argmax(-1), eos_idx)
+    rev_gen_soft_tokens = rev_style_gen_log_probs.exp()
+    rev_style_length = get_length(rev_gen_soft_tokens.argmax(-1), eos_idx)
 
-        if config['discriminator_method'] == 'conditional':
-            real_log_probs = disc_model(input_ids, input_length, style_ids)
-            fake_log_probs = disc_model(input_ids, input_length, rev_style_ids)
-            log_probs = torch.cat((real_log_probs, fake_log_probs), 0)
-            real_labels = torch.ones_like(style_ids)
-            fake_labels = torch.zeros_like(rev_style_ids)
-            labels = torch.cat((real_labels, fake_labels), 0)
+    if config['discriminator_method'] == 'conditional':
+        real_log_probs = disc_model(input_ids, input_length, style_ids)
+        fake_log_probs = disc_model(input_ids, input_length, rev_style_ids)
+        log_probs = torch.cat((real_log_probs, fake_log_probs), 0)
+        real_labels = torch.ones_like(style_ids)
+        fake_labels = torch.zeros_like(rev_style_ids)
+        labels = torch.cat((real_labels, fake_labels), 0)
 
-            real_gen_log_probs = disc_model(gen_soft_probs, raw_gen_length, style_ids)
-            fake_gen_log_probs = disc_model(rev_gen_soft_tokens, rev_style_length, rev_style_ids)
-            gen_log_probs = torch.cat((real_gen_log_probs, fake_gen_log_probs), 0)
-            real_gen_labels = torch.ones_like(style_ids)
-            fake_gen_labels = torch.zeros_like(rev_style_ids)
-            gen_labels = torch.cat((real_gen_labels, fake_gen_labels), 0)
+        real_gen_log_probs = disc_model(gen_soft_probs, raw_gen_length, style_ids)
+        fake_gen_log_probs = disc_model(rev_gen_soft_tokens, rev_style_length, rev_style_ids)
+        gen_log_probs = torch.cat((real_gen_log_probs, fake_gen_log_probs), 0)
+        real_gen_labels = torch.ones_like(style_ids)
+        fake_gen_labels = torch.zeros_like(rev_style_ids)
+        gen_labels = torch.cat((real_gen_labels, fake_gen_labels), 0)
 
-        elif config['discriminator_method'] == "Multi":
-            log_probs = disc_model(input_ids, input_length)
-            labels = style_ids + 1
-            raw_gen_log_probs = disc_model(gen_soft_probs, raw_gen_length)
-            rev_gen_log_probs = disc_model(rev_gen_soft_tokens, rev_style_length)
-            gen_log_probs = torch.cat((raw_gen_log_probs, rev_gen_log_probs), 0)
-            raw_gen_labels = style_ids + 1
-            rev_gen_labels = torch.zeros_like(rev_style_ids)
-            gen_labels = torch.cat((raw_gen_labels, rev_gen_labels), 0)
+    elif config['discriminator_method'] == "Multi":
+        log_probs = disc_model(input_ids, input_length)
+        labels = style_ids + 1
+        raw_gen_log_probs = disc_model(gen_soft_probs, raw_gen_length)
+        rev_gen_log_probs = disc_model(rev_gen_soft_tokens, rev_style_length)
+        gen_log_probs = torch.cat((raw_gen_log_probs, rev_gen_log_probs), 0)
+        raw_gen_labels = style_ids + 1
+        rev_gen_labels = torch.zeros_like(rev_style_ids)
+        gen_labels = torch.cat((raw_gen_labels, rev_gen_labels), 0)
 
 
-        adv_log_probs = torch.cat((log_probs, gen_log_probs), 0)
-        adv_labels = torch.cat((labels, gen_labels), 0)
-        adv_loss = (loss_fn(adv_log_probs, adv_labels).sum()/batch_size)
-        adv_loss.requires_grad_(True).backward()
+    adv_log_probs = torch.cat((log_probs, gen_log_probs), 0)
+    adv_labels = torch.cat((labels, gen_labels), 0)
+    adv_loss = (loss_fn(adv_log_probs, adv_labels).sum()/batch_size)
+    adv_loss.backward()
 
-        torch.nn.utils.clip_grad.clip_grad_norm_(disc_model.parameters(), max_norm=5)
-        disc_optimizer.step()
-        # different from original position
-        disc_optimizer.zero_grad()
-        style_model.train()
-        
-        return adv_loss.item()
+    disc_optimizer.zero_grad()
+    torch.nn.utils.clip_grad.clip_grad_norm_(disc_model.parameters(), max_norm=5)
+    disc_optimizer.step()
+    # different from original position
+    style_model.train()
+    
+    return adv_loss.item()
     
 def train(config, vocab, tokenizer, style_model, disc_model, train_loader, val_loader, test_loader):
     style_optimizer = torch.optim.Adam(style_model.parameters(), lr=config['lr_style_model'], weight_decay=config['weight_decay'])
@@ -247,7 +253,6 @@ def train(config, vocab, tokenizer, style_model, disc_model, train_loader, val_l
     print('Training start.....')
     # temp
     def calculate_temperature(temperature_config, step):
-        # convert a string of tuples of 2 int from yaml to a list of tuples of 2 int
         temperature_config = eval(temperature_config)
         num = len(temperature_config)
         for i in range(num):
@@ -264,10 +269,18 @@ def train(config, vocab, tokenizer, style_model, disc_model, train_loader, val_l
     while True:
         drop_decay = calculate_temperature(config['drop_rate_config'], global_step)
         temperature = calculate_temperature(config['temperature_config'], global_step)
-        batch = next(batch_iters)
+        try:
+            batch = next(batch_iters)
+        except StopIteration:
+            batch_iters = iter(train_loader)
+            batch = next(batch_iters)
 
         for _ in range(config['iter_D']):
-            batch = next(batch_iters)
+            try:
+                batch = next(batch_iters)
+            except StopIteration:
+                batch_iters = iter(train_loader)
+                batch = next(batch_iters)
             batch = {k:v.to(eval(config['device'])) for k, v in batch.items()}
             disc_adv_loss = disc_step(
                 config, vocab, tokenizer, style_model, disc_model, batch, disc_optimizer, temperature
@@ -275,7 +288,11 @@ def train(config, vocab, tokenizer, style_model, disc_model, train_loader, val_l
             his_d_adv_loss.append(disc_adv_loss)
 
         for _ in range(config['iter_F']):
-            batch = next(batch_iters)
+            try:
+                batch = next(batch_iters)
+            except StopIteration:
+                batch_iters = iter(train_loader)
+                batch = next(batch_iters)
             batch = {k:v.to(eval(config['device'])) for k, v in batch.items()}
             gen_slf_loss, gen_cyc_loss, gen_adv_loss = \
             f_step(
@@ -340,16 +357,16 @@ def evaluate(config, vocab, tokenizer, style_model, test_loader, global_step, te
 
             with torch.no_grad():
                 pos_gen_log_probs = style_model(
-                    pos_input_ids, None, pos_input_length, pos_styles, generate=True, temperature=temperature
+                    pos_input_ids, None, pos_input_length, pos_styles, generate=True, temperature=temperature, differentiable_decode=True
                 )
                 neg_gen_log_probs = style_model(
-                    neg_input_ids, None, neg_input_length, neg_styles, generate=True, temperature=temperature
+                    neg_input_ids, None, neg_input_length, neg_styles, generate=True, temperature=temperature, differentiable_decode=True
                 )
                 pos_rev_gen_log_probs = style_model(
-                    pos_input_ids, None, pos_input_length, rev_style_pos, generate=True, temperature=temperature
+                    pos_input_ids, None, pos_input_length, rev_style_pos, generate=True, temperature=temperature, differentiable_decode=True
                 )
                 neg_rev_gen_log_probs = style_model(
-                    neg_input_ids, None, neg_input_length, rev_style_neg, generate=True, temperature=temperature
+                    neg_input_ids, None, neg_input_length, rev_style_neg, generate=True, temperature=temperature, differentiable_decode=True
                 )
 
             pos_actual_text += detokenize(tokenizer, vocab, pos_input_ids.cpu())

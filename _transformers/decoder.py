@@ -76,21 +76,21 @@ class Decoder(nn.Module):
         y = self.norm(new_states[-1])[:, -1:]
         return self.generator(y, temperature), new_states
 
-if __name__ == "__main__":
-    # dummy data
-    enc = Encoder(100, 128, 4, 0.1)
-    dec = Decoder(100, 128, 4, 4, 0.1)
-    # dec2 = Decoder2(4, 128, 100, 4, 0.1)
-    src = torch.randint(0, 100, (1, 10, 128)).float()
-    tgt = torch.randint(0, 100, (1, 10, 128)).float()
-    src_mask = torch.randint(0, 2, (1, 1)).float()
-    tgt_mask = torch.randint(0, 2, (1, 1)).float()
-    # memory = enc(src, src_mask)
-    memory = torch.randn(1, 10, 128)
-    for i in range(10):
-        gen_dec = dec.regressive_generate(tgt, memory, src_mask, tgt_mask, 1.0)
-        # gen_desc = dec2.incremental_forward(tgt, memory, src_mask, tgt_mask, 1.0)
-        tgt = gen_dec[0]
-        memory = torch.cat((memory, tgt), dim=1)
+# if __name__ == "__main__":
+#     # dummy data
+#     enc = Encoder(100, 128, 4, 0.1)
+#     dec = Decoder(100, 128, 4, 4, 0.1)
+#     # dec2 = Decoder2(4, 128, 100, 4, 0.1)
+#     src = torch.randint(0, 100, (1, 10, 128)).float()
+#     tgt = torch.randint(0, 100, (1, 10, 128)).float()
+#     src_mask = torch.randint(0, 2, (1, 1)).float()
+#     tgt_mask = torch.randint(0, 2, (1, 1)).float()
+#     # memory = enc(src, src_mask)
+#     memory = torch.randn(1, 10, 128)
+#     for i in range(10):
+#         gen_dec = dec.regressive_generate(tgt, memory, src_mask, tgt_mask, 1.0)
+#         # gen_desc = dec2.incremental_forward(tgt, memory, src_mask, tgt_mask, 1.0)
+#         tgt = gen_dec[0]
+#         memory = torch.cat((memory, tgt), dim=1)
 
-    print(gen_dec[0].shape)
+#     print(gen_dec[0].shape)
