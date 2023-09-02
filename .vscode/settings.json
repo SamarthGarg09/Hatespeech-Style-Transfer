@@ -1,3 +1,4 @@
 {
-    "git.terminalAuthentication": false
+    "git.terminalAuthentication": false,
+    "python.analysis.typeCheckingMode": "off"
 }

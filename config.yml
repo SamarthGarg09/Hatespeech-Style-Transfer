@@ -16,18 +16,18 @@ Config:
     num_styles : 2
     
     num_classes : "num_styles + 1 if config['discriminator_method'] == 'Multi' else 2"
-    num_layers : 4
-    batch_size : 16
+    num_layers : 8
+    batch_size : 4
     lr_style_model : 0.001
-    lr_disc_model : 0.001d
+    lr_disc_model : 0.001
     L2 : 0
     iter_D : 10
     iter_F : 5
     F_pretrain_iter : 1000
-    log_steps : 5
-    eval_steps : 20
+    log_steps : 500
+    eval_steps : 500
     learned_pos_embed : True
-    dropout : 0
+    dropout : 0.2
     drop_rate_config : '[(1, 0)]'
     temperature_config : '[(1, 0)]'
     self_reconstruction_loss_weight : 0.25
@@ -40,8 +40,8 @@ Config:
     inp_drop_prob : 0
 
     num_style_embeds : 2
-    num_enc_layers : 4
-    num_dec_layers : 4
+    num_enc_layers : 8
+    num_dec_layers : 8
     padding_idx : 0
     weight_decay : 0
 

@@ -22,5 +22,6 @@ def tensor2text(tokenizer, vocab, tensor):
     return text
 
 def detokenize(tokenizer, vocab, tensor):
+    # 
     decoded_texts = tokenizer.batch_decode(tensor, skip_special_tokens=True)
     return decoded_texts

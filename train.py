@@ -18,6 +18,8 @@ def concat_neg_and_pos_ids(batch, eos_idx, pad_idx, reverse=False):
     would be (batch_size*2, seq_len).
     '''
     batch_neg, batch_pos = batch['pos_input_ids'], batch['neg_input_ids']
+    # batch_neg_mask, batch_pos_mask = batch['pos_attention_mask'], batch['neg_attention_mask']
+    
     diff = batch_pos.size(1) - batch_neg.size(1)
     
     if diff<0:
@@ -109,11 +111,12 @@ def f_step(
         differentiable_decode=True
     ) #pos_sent + neg_style -> neg_sent; 0-pos_style, 1->neg_style
 
-    gen_soft_tokens = gen_log_probs.exp()
-    gen_soft_token_len = get_length(gen_soft_tokens.argmax(-1), eos_idx)
+    # gen_soft_tokens = gen_log_probs.exp()
+    # gen_soft_token_len = get_length(gen_soft_tokens.argmax(-1), eos_idx)
+    gen_soft_token_len = get_length(gen_log_probs, eos_idx)
 
     cyclic_rec_log_probs = style_model(
-        gen_soft_tokens,    
+        gen_log_probs,#gen_soft_tokens,    
         input_ids, 
         gen_soft_token_len,
         style_ids,
@@ -127,7 +130,7 @@ def f_step(
     cyclic_rec_loss *= config['cyclic_rec_loss_weight']
     
     # adversarial loss
-    adv_log_probs = disc_model(gen_soft_tokens, gen_soft_token_len, reverse_style_ids)
+    adv_log_probs = disc_model(gen_log_probs, gen_soft_token_len, reverse_style_ids)
     if config['discriminator_method'] == 'Multi':
         adv_labels = reverse_style_ids + 1
     else:
@@ -172,11 +175,13 @@ def disc_step(config, vocab, tokenizer, style_model, disc_model, batch, disc_opt
             temperature=temperature,
             differentiable_decode=True
         )
-    gen_soft_probs = raw_style_gen_log_probs.exp()
-    raw_gen_length = get_length(gen_soft_probs.argmax(-1), eos_idx)
+    # gen_soft_probs = raw_style_gen_log_probs.exp()
+    # raw_gen_length = get_length(gen_soft_probs.argmax(-1), eos_idx)
 
-    rev_gen_soft_tokens = rev_style_gen_log_probs.exp()
-    rev_style_length = get_length(rev_gen_soft_tokens.argmax(-1), eos_idx)
+    # rev_gen_soft_tokens = rev_style_gen_log_probs.exp()
+    # rev_style_length = get_length(rev_gen_soft_tokens.argmax(-1), eos_idx)
+    raw_gen_length = get_length(raw_style_gen_log_probs, eos_idx)
+    rev_style_length = get_length(rev_style_gen_log_probs, eos_idx)
 
     if config['discriminator_method'] == 'conditional':
         real_log_probs = disc_model(input_ids, input_length, style_ids)
@@ -186,8 +191,10 @@ def disc_step(config, vocab, tokenizer, style_model, disc_model, batch, disc_opt
         fake_labels = torch.zeros_like(rev_style_ids)
         labels = torch.cat((real_labels, fake_labels), 0)
 
-        real_gen_log_probs = disc_model(gen_soft_probs, raw_gen_length, style_ids)
-        fake_gen_log_probs = disc_model(rev_gen_soft_tokens, rev_style_length, rev_style_ids)
+        # real_gen_log_probs = disc_model(gen_soft_probs, raw_gen_length, style_ids)
+        # fake_gen_log_probs = disc_model(rev_gen_soft_tokens, rev_style_length, rev_style_ids)
+        real_gen_log_probs = disc_model(raw_style_gen_log_probs, raw_gen_length, style_ids)
+        fake_gen_log_probs = disc_model(rev_style_gen_log_probs, rev_style_length, rev_style_ids)
         gen_log_probs = torch.cat((real_gen_log_probs, fake_gen_log_probs), 0)
         real_gen_labels = torch.ones_like(style_ids)
         fake_gen_labels = torch.zeros_like(rev_style_ids)
@@ -196,8 +203,8 @@ def disc_step(config, vocab, tokenizer, style_model, disc_model, batch, disc_opt
     elif config['discriminator_method'] == "Multi":
         log_probs = disc_model(input_ids, input_length)
         labels = style_ids + 1
-        raw_gen_log_probs = disc_model(gen_soft_probs, raw_gen_length)
-        rev_gen_log_probs = disc_model(rev_gen_soft_tokens, rev_style_length)
+        raw_gen_log_probs = disc_model(raw_style_gen_log_probs, raw_gen_length)
+        rev_gen_log_probs = disc_model(rev_style_gen_log_probs, rev_style_length)
         gen_log_probs = torch.cat((raw_gen_log_probs, rev_gen_log_probs), 0)
         raw_gen_labels = style_ids + 1
         rev_gen_labels = torch.zeros_like(rev_style_ids)
@@ -344,39 +351,41 @@ def evaluate(config, vocab, tokenizer, style_model, test_loader, global_step, te
         device = eval(config['device'])
         for batch in data_iter:
             batch = {k:v.to(eval(config['device'])) for k, v in batch.items()}
-            pos_input_ids = batch['pos_input_ids'].to(device)
-            neg_input_ids = batch['neg_input_ids'].to(device)
-
-            pos_input_length = get_length(pos_input_ids, eos_idx)
-            neg_input_length = get_length(neg_input_ids, eos_idx)
-
-            pos_styles = torch.full_like(pos_input_ids[:, 0], pos_style).to(device)
-            neg_styles = torch.full_like(pos_input_ids[:, 0], neg_style).to(device)
-            rev_style_pos = 1 - pos_styles
-            rev_style_neg = 1 - neg_styles
+            input_ids, styles, input_length = concat_neg_and_pos_ids(batch, eos_idx, tokenizer.pad_token_id, reverse=False)
+            rev_styles= 1 - styles
 
             with torch.no_grad():
-                pos_gen_log_probs = style_model(
-                    pos_input_ids, None, pos_input_length, pos_styles, generate=True, temperature=temperature, differentiable_decode=True
-                )
-                neg_gen_log_probs = style_model(
-                    neg_input_ids, None, neg_input_length, neg_styles, generate=True, temperature=temperature, differentiable_decode=True
-                )
-                pos_rev_gen_log_probs = style_model(
-                    pos_input_ids, None, pos_input_length, rev_style_pos, generate=True, temperature=temperature, differentiable_decode=True
-                )
-                neg_rev_gen_log_probs = style_model(
-                    neg_input_ids, None, neg_input_length, rev_style_neg, generate=True, temperature=temperature, differentiable_decode=True
+               
+                gen_log_probs = style_model(
+                    input_ids,
+                    None,
+                    input_length,
+                    styles,
+                    temperature,
+                    generate=True,
+                    differentiable_decode=True
                 )
 
-            pos_actual_text += detokenize(tokenizer, vocab, pos_input_ids.cpu())
-            neg_actual_text += detokenize(tokenizer, vocab, neg_input_ids.cpu())
+                rev_gen_log_probs = style_model(
+                    input_ids,
+                    None,
+                    input_length,
+                    rev_styles,
+                    temperature,
+                    generate=True,
+                    differentiable_decode=True
+                )
+            pos_gen_log_probs, neg_gen_log_probs = gen_log_probs.split(input_ids.size(0)//2, dim=0)
+            pos_rev_gen_log_probs, neg_rev_gen_log_probs = rev_gen_log_probs.split(input_ids.size(0)//2, dim=0)
 
-            pos_predicted_output += detokenize(tokenizer, vocab, pos_gen_log_probs.argmax(-1).cpu())
-            neg_predicted_output += detokenize(tokenizer, vocab, neg_gen_log_probs.argmax(-1).cpu())
+            pos_actual_text += detokenize(tokenizer, vocab, input_ids.cpu())
+            neg_actual_text += detokenize(tokenizer, vocab, input_ids.cpu())
 
-            pos_rev_output += detokenize(tokenizer, vocab, pos_rev_gen_log_probs.argmax(-1).cpu())
-            neg_rev_output += detokenize(tokenizer, vocab, neg_rev_gen_log_probs.argmax(-1).cpu())
+            pos_predicted_output += detokenize(tokenizer, vocab, pos_gen_log_probs.cpu())
+            neg_predicted_output += detokenize(tokenizer, vocab, neg_gen_log_probs.cpu())
+
+            pos_rev_output += detokenize(tokenizer, vocab, pos_rev_gen_log_probs.cpu())
+            neg_rev_output += detokenize(tokenizer, vocab, neg_rev_gen_log_probs.cpu())
 
         return zip((pos_actual_text, pos_predicted_output, pos_rev_output), (neg_actual_text, neg_predicted_output, neg_rev_output))
 

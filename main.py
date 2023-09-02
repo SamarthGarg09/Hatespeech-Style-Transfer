@@ -5,7 +5,7 @@ from _transformers.models import StyleTransformer, Discriminator
 from train import train
 with open('/Data/deeksha/disha/code_p/style_transformer_repl/config.yml', 'r') as file:
     config = yaml.safe_load(file)
-
+ 
 def load_model(config):
     style_model = StyleTransformer(
         len(vocab), 
@@ -16,6 +16,7 @@ def load_model(config):
         config['num_heads'],
         config['dropout'],
         config['max_length'],
+        2*config['batch_size'],
         config['padding_idx']
     ).to(eval(config['device']))
     
