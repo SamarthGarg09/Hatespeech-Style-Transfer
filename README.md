@@ -25,10 +25,6 @@ To train the model, use the following command; make sure to change the training 
 ```bash
 CUDA_VISIBLE_DEVICES=0 python main.py
 ```
-For evaluation, run:
-```bash
-python evaluate.py
-```
 ## Files and Directories
 - `main.py`: Main entry point of the application.
 - `train.py`: Contains the training loop and related functionalities.
