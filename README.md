@@ -21,9 +21,9 @@ cd Hatespeech-Style-Transfer
 pip install -r requirements.txt
 ```
 ## Usage
-To train the model, use the following command:
+To train the model, use the following command; make sure to change the training configurations from `config.yml` as per your needs:
 ```bash
-CUDA_VISIBLE_DEVICES=0 python train.py
+CUDA_VISIBLE_DEVICES=0 python main.py
 ```
 For evaluation, run:
 ```bash
